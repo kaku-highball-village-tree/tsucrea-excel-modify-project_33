@@ -652,18 +652,86 @@ def handle_cp_management_group_left_down() -> None:
             "SellGeneralAdminCost_Allocation_DnD",
         )
         return
+
+    def parse_selected_range_file(
+        pszPath: str,
+    ) -> Optional[Tuple[Tuple[int, int], Tuple[int, int]]]:
+        try:
+            with open(pszPath, "r", encoding="utf-8", newline="") as objFile:
+                pszContent: str = objFile.read()
+        except OSError:
+            return None
+
+        objMatch = re.search(r"開始:\s*(\d{4})/(\d{2}).*?終了:\s*(\d{4})/(\d{2})", pszContent, re.DOTALL)
+        if objMatch is None:
+            objMatch = re.search(r"採用範囲:\s*(\d{4})年(\d{1,2})月〜(\d{4})年(\d{1,2})月", pszContent)
+            if objMatch is None:
+                return None
+
+        iStartYear: int = int(objMatch.group(1))
+        iStartMonth: int = int(objMatch.group(2))
+        iEndYear: int = int(objMatch.group(3))
+        iEndMonth: int = int(objMatch.group(4))
+        if not (1 <= iStartMonth <= 12 and 1 <= iEndMonth <= 12):
+            return None
+        return (iStartYear, iStartMonth), (iEndYear, iEndMonth)
+
     pszGroupDirectory = os.path.join(pszExecutionRoot, "CP別経営管理表_計上グループ")
-    pszTargetPath = os.path.join(
-        pszGroupDirectory,
-        "CP別経営管理_計上グループ_累計_2025年04月-2025年10月.xlsx",
-    )
-    if not os.path.isfile(pszTargetPath):
-        show_error_message_box(
-            "Error: ファイルが見つかりません。\n" + pszTargetPath,
-            "SellGeneralAdminCost_Allocation_DnD",
+    pszPeriodDirectory = os.path.join(pszExecutionRoot, "期間")
+    objRangeFileNames: List[str] = [
+        "SellGeneralAdminCost_Allocation_Cmd_SelectedRange.txt",
+        "SellGeneralAdminCost_Allocation_DnD_SelectedRange.txt",
+    ]
+
+    pszTargetPath: Optional[str] = None
+    for pszRangeFileName in objRangeFileNames:
+        pszRangePath: str = os.path.join(pszPeriodDirectory, pszRangeFileName)
+        if not os.path.isfile(pszRangePath):
+            continue
+        objSelectedRange = parse_selected_range_file(pszRangePath)
+        if objSelectedRange is None:
+            continue
+        (iStartYear, iStartMonth), (iEndYear, iEndMonth) = objSelectedRange
+        pszStartLabel: str = f"{iStartYear}年{iStartMonth:02d}月"
+        pszEndLabel: str = f"{iEndYear}年{iEndMonth:02d}月"
+        pszTargetPath = os.path.join(
+            pszGroupDirectory,
+            f"CP別経営管理_計上グループ_累計_{pszStartLabel}-{pszEndLabel}.xlsx",
         )
+        break
+
+    if pszTargetPath is not None and os.path.isfile(pszTargetPath):
+        os.startfile(pszTargetPath)
         return
-    os.startfile(pszTargetPath)
+
+    objFallbackPaths: List[str] = []
+    if os.path.isdir(pszGroupDirectory):
+        for pszName in os.listdir(pszGroupDirectory):
+            if (
+                pszName.startswith("CP別経営管理_計上グループ_累計_")
+                and pszName.endswith(".xlsx")
+            ):
+                objFallbackPaths.append(os.path.join(pszGroupDirectory, pszName))
+
+    if objFallbackPaths:
+        objFallbackPaths.sort(
+            key=lambda pszPath: (
+                os.path.getmtime(pszPath),
+                os.path.basename(pszPath),
+            ),
+        )
+        os.startfile(objFallbackPaths[-1])
+        return
+
+    if pszTargetPath is None:
+        pszTargetPath = os.path.join(
+            pszGroupDirectory,
+            "CP別経営管理_計上グループ_累計_*.xlsx",
+        )
+    show_error_message_box(
+        "Error: ファイルが見つかりません。\n" + pszTargetPath,
+        "SellGeneralAdminCost_Allocation_DnD",
+    )
 
 
 def handle_cp_management_group_right_down() -> None:
