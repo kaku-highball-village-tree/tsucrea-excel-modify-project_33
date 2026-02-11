@@ -3,7 +3,7 @@ import os
 import re
 import shutil
 import sys
-from typing import List, Tuple
+from typing import Dict, List, Optional, Tuple
 
 
 def get_target_year_month_from_filename(pszInputFilePath: str) -> Tuple[int, int]:
@@ -503,38 +503,163 @@ def main() -> int:
 
 def create_drag_and_drop_manhour_and_pl_folder() -> None:
     pszScriptDirectory: str = os.path.dirname(os.path.abspath(__file__))
-    objTargetMonths: List[str] = [f"2025年{iMonth:02d}月" for iMonth in range(4, 11)]
-    objManhourFileNames: List[str] = []
-    for pszYearMonth in objTargetMonths:
-        objManhourFileNames.extend(
-            [
-                f"工数_{pszYearMonth}_step14_各プロジェクトの計上カンパニー名_工数_カンパニーの工数.tsv",
-                f"工数_{pszYearMonth}_step15_各プロジェクトの工数.tsv",
-            ]
+
+    def extract_year_month_from_path(pszPath: str) -> Optional[Tuple[int, int]]:
+        pszBaseName: str = os.path.basename(pszPath)
+        objMatch = re.search(r"_(\d{4})年(\d{1,2})月", pszBaseName)
+        if objMatch is None:
+            return None
+        try:
+            iYear: int = int(objMatch.group(1))
+            iMonth: int = int(objMatch.group(2))
+        except ValueError:
+            return None
+        if iMonth < 1 or iMonth > 12:
+            return None
+        return iYear, iMonth
+
+    def next_year_month(iYear: int, iMonth: int) -> Tuple[int, int]:
+        iMonth += 1
+        if iMonth > 12:
+            return iYear + 1, 1
+        return iYear, iMonth
+
+    def range_length(objStart: Tuple[int, int], objEnd: Tuple[int, int]) -> int:
+        iYearStart, iMonthStart = objStart
+        iYearEnd, iMonthEnd = objEnd
+        return (iYearEnd * 12 + iMonthEnd) - (iYearStart * 12 + iMonthStart) + 1
+
+    def update_best_range(
+        objCurrentBest: Optional[Tuple[Tuple[int, int], Tuple[int, int]]],
+        iCurrentBestLength: int,
+        objCandidateStart: Tuple[int, int],
+        objCandidateEnd: Tuple[int, int],
+    ) -> Tuple[Optional[Tuple[Tuple[int, int], Tuple[int, int]]], int]:
+        iCandidateLength: int = range_length(objCandidateStart, objCandidateEnd)
+        if iCandidateLength > iCurrentBestLength:
+            return (objCandidateStart, objCandidateEnd), iCandidateLength
+        if iCandidateLength == iCurrentBestLength and objCurrentBest is not None:
+            if objCandidateEnd > objCurrentBest[1]:
+                return (objCandidateStart, objCandidateEnd), iCandidateLength
+        if objCurrentBest is None:
+            return (objCandidateStart, objCandidateEnd), iCandidateLength
+        return objCurrentBest, iCurrentBestLength
+
+    def find_best_continuous_range(
+        objYearMonths: List[Tuple[int, int]],
+    ) -> Optional[Tuple[Tuple[int, int], Tuple[int, int]]]:
+        if not objYearMonths:
+            return None
+        objSorted: List[Tuple[int, int]] = sorted(set(objYearMonths))
+        objBestRange: Optional[Tuple[Tuple[int, int], Tuple[int, int]]] = None
+        iBestLength: int = 0
+        objCurrentStart: Tuple[int, int] = objSorted[0]
+        objCurrentEnd: Tuple[int, int] = objSorted[0]
+        for objMonth in objSorted[1:]:
+            if next_year_month(*objCurrentEnd) == objMonth:
+                objCurrentEnd = objMonth
+                continue
+            objBestRange, iBestLength = update_best_range(
+                objBestRange,
+                iBestLength,
+                objCurrentStart,
+                objCurrentEnd,
+            )
+            objCurrentStart = objMonth
+            objCurrentEnd = objMonth
+        objBestRange, _ = update_best_range(
+            objBestRange,
+            iBestLength,
+            objCurrentStart,
+            objCurrentEnd,
         )
-    objProfitLossFileNames: List[str] = [
-        f"損益計算書_{pszYearMonth}_A∪B_プロジェクト名_C∪D_vertical.tsv"
-        for pszYearMonth in objTargetMonths
-    ]
-    objExistingSourcePaths: List[str] = []
-    objFoundManhour = False
-    for pszFileName in objManhourFileNames:
-        pszSourcePath = os.path.join(pszScriptDirectory, pszFileName)
+        return objBestRange
+
+    def month_to_ordinal(objMonth: Tuple[int, int]) -> int:
+        iYear, iMonth = objMonth
+        return iYear * 12 + iMonth
+
+    def is_month_in_range(
+        objMonth: Tuple[int, int],
+        objRange: Tuple[Tuple[int, int], Tuple[int, int]],
+    ) -> bool:
+        iValue: int = month_to_ordinal(objMonth)
+        iStart: int = month_to_ordinal(objRange[0])
+        iEnd: int = month_to_ordinal(objRange[1])
+        return iStart <= iValue <= iEnd
+
+    def write_selected_range_file(
+        pszDirectory: str,
+        objRange: Tuple[Tuple[int, int], Tuple[int, int]],
+    ) -> None:
+        iStartYear, iStartMonth = objRange[0]
+        iEndYear, iEndMonth = objRange[1]
+        pszOutputPath: str = os.path.join(
+            pszDirectory,
+            "SellGeneralAdminCost_Allocation_Cmd_SelectedRange.txt",
+        )
+        pszStartText: str = f"{iStartYear:04d}/{iStartMonth:02d}"
+        pszEndText: str = f"{iEndYear:04d}/{iEndMonth:02d}"
+        objLines: List[str] = [
+            "採用範囲:",
+            f"開始: {pszStartText}",
+            f"終了: {pszEndText}",
+        ]
+        with open(pszOutputPath, "w", encoding="utf-8", newline="") as objFile:
+            objFile.write("\n".join(objLines) + "\n")
+
+    objMonthFiles: Dict[Tuple[int, int], Dict[str, List[str] | str]] = {}
+    for pszFileName in os.listdir(pszScriptDirectory):
+        pszSourcePath: str = os.path.join(pszScriptDirectory, pszFileName)
         if not os.path.isfile(pszSourcePath):
             continue
-        objFoundManhour = True
-        objExistingSourcePaths.append(pszSourcePath)
-    if not objFoundManhour:
+        objMonth: Optional[Tuple[int, int]] = extract_year_month_from_path(pszFileName)
+        if objMonth is None:
+            continue
+
+        if (
+            pszFileName.startswith("工数_")
+            and (
+                pszFileName.endswith("_step14_各プロジェクトの計上カンパニー名_工数_カンパニーの工数.tsv")
+                or pszFileName.endswith("_step15_各プロジェクトの工数.tsv")
+            )
+        ):
+            objMonthEntry = objMonthFiles.setdefault(objMonth, {"manhour": [], "pl": ""})
+            objMonthEntry["manhour"].append(pszSourcePath)
+            continue
+
+        if (
+            pszFileName.startswith("損益計算書_")
+            and pszFileName.endswith("_A∪B_プロジェクト名_C∪D_vertical.tsv")
+        ):
+            objMonthEntry = objMonthFiles.setdefault(objMonth, {"manhour": [], "pl": ""})
+            objMonthEntry["pl"] = pszSourcePath
+
+    objPairMonths: List[Tuple[int, int]] = [
+        objMonth
+        for objMonth, objEntry in objMonthFiles.items()
+        if objEntry["manhour"] and objEntry["pl"]
+    ]
+    objSelectedRange = find_best_continuous_range(objPairMonths)
+    if objSelectedRange is None:
         return
-    for pszFileName in objProfitLossFileNames:
-        pszSourcePath = os.path.join(pszScriptDirectory, pszFileName)
-        if not os.path.isfile(pszSourcePath):
-            return
-        objExistingSourcePaths.append(pszSourcePath)
+
+    objSelectedSourcePaths: List[str] = []
+    for objMonth in sorted(objPairMonths):
+        if not is_month_in_range(objMonth, objSelectedRange):
+            continue
+        objEntry = objMonthFiles[objMonth]
+        objSelectedSourcePaths.extend(sorted(objEntry["manhour"]))
+        objSelectedSourcePaths.append(objEntry["pl"])
+
+    if not objSelectedSourcePaths:
+        return
+
+    write_selected_range_file(pszScriptDirectory, objSelectedRange)
 
     pszOutputDirectory: str = os.path.join(pszScriptDirectory, "DragAndDropManhourAndPl")
     os.makedirs(pszOutputDirectory, exist_ok=True)
-    for pszSourcePath in objExistingSourcePaths:
+    for pszSourcePath in objSelectedSourcePaths:
         pszDestinationPath: str = os.path.join(pszOutputDirectory, os.path.basename(pszSourcePath))
         shutil.copy2(pszSourcePath, pszDestinationPath)
 
