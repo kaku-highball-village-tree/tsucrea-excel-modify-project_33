@@ -1345,12 +1345,22 @@ def ensure_selected_range_file(pszDirectory: str, objRange: Tuple[Tuple[int, int
     ]
     with open(pszOutputPath, "w", encoding="utf-8", newline="") as objFile:
         objFile.write("\n".join(objLines) + "\n")
+    pszAccountPeriodPath: str = os.path.join(
+        pszDirectory,
+        "SellGeneralAdminCost_Allocation_Cmd_AccountPeriodRange.txt",
+    )
+    with open(pszAccountPeriodPath, "w", encoding="utf-8", newline="") as objFile:
+        objFile.write("\n".join(objLines) + "\n")
     if EXECUTION_ROOT_DIRECTORY:
         pszPeriodDirectory = os.path.join(EXECUTION_ROOT_DIRECTORY, "期間")
         os.makedirs(pszPeriodDirectory, exist_ok=True)
         shutil.copy2(
             pszOutputPath,
             os.path.join(pszPeriodDirectory, os.path.basename(pszOutputPath)),
+        )
+        shutil.copy2(
+            pszAccountPeriodPath,
+            os.path.join(pszPeriodDirectory, os.path.basename(pszAccountPeriodPath)),
         )
     return pszOutputPath
 
