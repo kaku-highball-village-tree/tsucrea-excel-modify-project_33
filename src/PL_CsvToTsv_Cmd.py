@@ -596,7 +596,7 @@ def create_drag_and_drop_manhour_and_pl_folder() -> None:
         iEndYear, iEndMonth = objRange[1]
         pszOutputPath: str = os.path.join(
             pszDirectory,
-            "SellGeneralAdminCost_Allocation_Cmd_SelectedRange.txt",
+            "PL_CsvToTsv_Cmd_SelectedRange.txt",
         )
         pszStartText: str = f"{iStartYear:04d}/{iStartMonth:02d}"
         pszEndText: str = f"{iEndYear:04d}/{iEndMonth:02d}"
