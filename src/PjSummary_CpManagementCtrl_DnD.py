@@ -1091,13 +1091,22 @@ def write_selected_range_file(
 ) -> Optional[str]:
     if not objPairs:
         return None
-    pszStart: str = objPairs[0][3]
-    pszEnd: str = objPairs[-1][3]
+    iStartYear: int = objPairs[0][2][0]
+    iStartMonth: int = objPairs[0][2][1]
+    iEndYear: int = objPairs[-1][2][0]
+    iEndMonth: int = objPairs[-1][2][1]
+    pszStartText: str = f"{iStartYear:04d}/{iStartMonth:02d}"
+    pszEndText: str = f"{iEndYear:04d}/{iEndMonth:02d}"
+    objLines: List[str] = [
+        "採用範囲:",
+        f"開始: {pszStartText}",
+        f"終了: {pszEndText}",
+    ]
     pszOutputDirectory: str = os.path.dirname(os.path.abspath(__file__))
     pszOutputFileName: str = "SellGeneralAdminCost_Allocation_DnD_SelectedRange.txt"
     pszOutputPath: str = os.path.join(pszOutputDirectory, pszOutputFileName)
     with open(pszOutputPath, "w", encoding="utf-8", newline="") as objOutputFile:
-        objOutputFile.write(f"採用範囲: {pszStart}〜{pszEnd}\n")
+        objOutputFile.write("\n".join(objLines) + "\n")
     return pszOutputPath
 
 
