@@ -1345,12 +1345,60 @@ def ensure_selected_range_file(pszDirectory: str, objRange: Tuple[Tuple[int, int
     ]
     with open(pszOutputPath, "w", encoding="utf-8", newline="") as objFile:
         objFile.write("\n".join(objLines) + "\n")
+
+    def format_period_block(
+        pszLabel: str,
+        objRanges: List[Tuple[Tuple[int, int], Tuple[int, int]]],
+    ) -> List[str]:
+        objResultLines: List[str] = [f"{pszLabel}:"]
+        if len(objRanges) >= 2:
+            (iPriorStartYear, iPriorStartMonth), (iPriorEndYear, iPriorEndMonth) = objRanges[-2]
+            objResultLines.extend(
+                [
+                    "前期",
+                    f"開始: {iPriorStartYear:04d}/{iPriorStartMonth:02d}",
+                    f"終了: {iPriorEndYear:04d}/{iPriorEndMonth:02d}",
+                ]
+            )
+        else:
+            objResultLines.extend(["前期", "なし。"])
+        if objRanges:
+            (iCurrentStartYear, iCurrentStartMonth), (iCurrentEndYear, iCurrentEndMonth) = objRanges[-1]
+            objResultLines.extend(
+                [
+                    "当期",
+                    f"開始: {iCurrentStartYear:04d}/{iCurrentStartMonth:02d}",
+                    f"終了: {iCurrentEndYear:04d}/{iCurrentEndMonth:02d}",
+                ]
+            )
+        else:
+            objResultLines.extend(["当期", "なし。"])
+        return objResultLines
+
+    objStart, objEnd = objRange
+    objFiscalARanges = split_by_fiscal_boundary(objStart, objEnd, 3)
+    objFiscalBRanges = split_by_fiscal_boundary(objStart, objEnd, 8)
+    objAccountPeriodLines: List[str] = []
+    objAccountPeriodLines.extend(format_period_block("3月決算の会計期間", objFiscalARanges))
+    objAccountPeriodLines.append("")
+    objAccountPeriodLines.extend(format_period_block("8月決算の会計期間", objFiscalBRanges))
+
+    pszAccountPeriodPath: str = os.path.join(
+        pszDirectory,
+        "SellGeneralAdminCost_Allocation_Cmd_AccountPeriodRange.txt",
+    )
+    with open(pszAccountPeriodPath, "w", encoding="utf-8", newline="") as objFile:
+        objFile.write("\n".join(objAccountPeriodLines) + "\n")
     if EXECUTION_ROOT_DIRECTORY:
         pszPeriodDirectory = os.path.join(EXECUTION_ROOT_DIRECTORY, "期間")
         os.makedirs(pszPeriodDirectory, exist_ok=True)
         shutil.copy2(
             pszOutputPath,
             os.path.join(pszPeriodDirectory, os.path.basename(pszOutputPath)),
+        )
+        shutil.copy2(
+            pszAccountPeriodPath,
+            os.path.join(pszPeriodDirectory, os.path.basename(pszAccountPeriodPath)),
         )
     return pszOutputPath
 
